@@ -7,6 +7,8 @@
 
 snax is a static publisher dashboard that talks directly to the Snap Store dashboard API. The first step provides token-based login and a minimal account view.
 
+The site is published at <https://nsg.github.io/snax/>.
+
 ## Run locally
 
 ```sh
