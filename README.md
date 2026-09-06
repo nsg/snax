@@ -2,7 +2,7 @@
   <h1>snax</h1>
   <p>A browser-only alternative view of your snaps on the Snap Store.</p>
 
-[![AI usage: mostly](https://nsg.github.io/aibadge/mostly.svg)](https://nsg.github.io/aibadge/#mostly)
+[![AI usage: vibe](https://nsg.github.io/aibadge/vibe.svg)](https://nsg.github.io/aibadge/#vibe)
 </div>
 
 snax is a static publisher dashboard that talks directly to the Snap Store dashboard API. The first step provides token-based login and a minimal account view.
