@@ -1,189 +1,134 @@
+import { parseCredentials, type Credentials } from '../credentials'
 import { parseMacaroonV1 } from '../macaroon'
+import { navigate } from '../router'
 import { NetworkError, StoreError, fetchAccount, type AccountInfo, type SnapRegistration } from '../storeApi'
-import { clearAll, loadCachedAccount, saveCachedAccount } from '../storage'
-import type { Credentials } from '../credentials'
-import { renderLogin } from './login'
+import { clearAll, loadCachedAccount, loadCredentialsText, saveCachedAccount } from '../storage'
+import { el } from '../ui/dom'
+import { createShell } from '../ui/shell'
 
-function valueLine(label: string, value: string | undefined, className?: string): HTMLElement {
-  const row = document.createElement('p')
-  row.className = 'account-line'
-  const labelNode = document.createElement('span')
-  labelNode.textContent = label
-  const valueNode = document.createElement('span')
-  valueNode.textContent = value?.trim() || '—'
-  if (className !== undefined) valueNode.className = className
-  row.append(labelNode, valueNode)
-  return row
-}
-
-function accountCard(account: AccountInfo, fetchedAt?: string): HTMLElement {
-  const card = document.createElement('section')
-  card.className = 'card'
-  const title = document.createElement('h2')
-  title.textContent = 'Signed in as'
-  const displayName = document.createElement('p')
-  displayName.className = 'display-name'
-  displayName.textContent = account.displayname?.trim() || account.username?.trim() || 'Snap Store publisher'
-  card.append(
-    title,
-    displayName,
-    valueLine('Username', account.username),
-    valueLine('Email', account.email),
-    valueLine('Account id', account.account_id, 'mono'),
-  )
+function accountHeading(account: AccountInfo, fetchedAt?: string): HTMLElement {
+  const identity = [account.displayname?.trim(), account.email?.trim()].filter(Boolean).join(', ')
+  const children: Array<HTMLElement | string | null> = [
+    el('h1', null, 'Your snaps'),
+    identity === '' ? null : el('p', { className: 'account-identity' }, identity),
+  ]
   if (fetchedAt !== undefined) {
-    const updated = document.createElement('p')
-    updated.className = 'updated'
-    updated.textContent = `updated ${fetchedAt}`
-    card.append(updated)
+    const time = new Date(fetchedAt)
+    const value = Number.isNaN(time.getTime()) ? fetchedAt : time.toLocaleString()
+    children.push(el('p', { className: 'account-updated' }, `updated ${value}`))
   }
-  return card
+  return el('div', { className: 'account-heading' }, children)
 }
 
 function snapRow(name: string, snap: SnapRegistration): HTMLElement {
-  const row = document.createElement('li')
-  row.className = 'snap-row'
-  const primary = document.createElement('div')
-  const snapName = document.createElement('strong')
-  snapName.textContent = name
-  primary.append(snapName)
-  if (snap.private === true) {
-    const badge = document.createElement('span')
-    badge.className = 'badge'
-    badge.textContent = 'private'
-    primary.append(badge)
+  const facts: HTMLElement[] = []
+  if (typeof snap.since === 'string' && snap.since.length > 0) {
+    facts.push(el('span', null, `since ${snap.since.slice(0, 10)}`))
   }
-  const metadata = document.createElement('div')
-  metadata.className = 'snap-meta'
-  const since = typeof snap.since === 'string' ? snap.since.slice(0, 10) : ''
-  if (since !== '') {
-    const date = document.createElement('span')
-    date.textContent = `since ${since}`
-    metadata.append(date)
-  }
+  if (snap.private === true) facts.push(el('span', { className: 'private-tag' }, 'private'))
   if (typeof snap.status === 'string' && snap.status !== 'Approved') {
-    const status = document.createElement('span')
-    status.textContent = snap.status
-    metadata.append(status)
+    facts.push(el('span', null, snap.status))
   }
-  row.append(primary, metadata)
-  return row
+  return el('li', { className: 'snap-row' }, [
+    el('span', { className: 'snap-name' }, name),
+    el('span', { className: 'snap-facts' }, facts),
+  ])
 }
 
-function snapsCard(account: AccountInfo): HTMLElement {
+function snapList(account: AccountInfo): HTMLElement {
   const snaps = account.snaps?.['16'] ?? {}
   const names = Object.keys(snaps).sort((a, b) => a.localeCompare(b))
-  const card = document.createElement('section')
-  card.className = 'card'
-  const title = document.createElement('h2')
-  title.textContent = `Your snaps (${names.length})`
-  card.append(title)
   if (names.length === 0) {
-    const empty = document.createElement('p')
-    empty.className = 'empty'
-    empty.textContent = 'No snaps are available to this token.'
-    card.append(empty)
-  } else {
-    const list = document.createElement('ul')
-    list.className = 'snap-list'
-    for (const name of names) {
-      const snap = snaps[name]
-      if (snap !== undefined) list.append(snapRow(name, snap))
-    }
-    card.append(list)
+    return el('p', { className: 'account-empty' }, 'No snaps are registered to this account yet.')
   }
-  const next = document.createElement('p')
-  next.className = 'hint'
-  next.textContent = 'Snap details, metrics and releases come in the next steps.'
-  card.append(next)
-  return card
+  return el('ul', { className: 'snap-list' }, names.map((name) => snapRow(name, snaps[name] ?? {})))
 }
 
-function tokenDetails(creds: Credentials): HTMLElement {
-  const details = document.createElement('details')
-  details.className = 'card token-details'
-  const summary = document.createElement('summary')
-  summary.textContent = 'Token details'
-  const kind = document.createElement('p')
-  kind.textContent = `Kind: ${creds.kind === 'u1' ? 'Ubuntu One' : 'Candid'}`
-  details.append(summary, kind)
-
-  if (creds.kind === 'u1') {
-    const caveats = parseMacaroonV1(creds.root).caveats.filter((caveat) => caveat.location === undefined)
-    const heading = document.createElement('p')
-    heading.textContent = 'First-party caveats:'
-    const list = document.createElement('ul')
-    list.className = 'caveat-list mono'
-    for (const caveat of caveats) {
-      const item = document.createElement('li')
-      item.textContent = caveat.id
-      list.append(item)
-    }
-    details.append(heading, list)
+function tokenDetails(credentials: Credentials): HTMLElement {
+  const details = el('details', { className: 'token-details' })
+  details.append(
+    el('summary', null, 'Token details'),
+    el('p', { className: 'token-kind' }, `Kind: ${credentials.kind === 'u1' ? 'Ubuntu One' : 'Candid'}`),
+  )
+  if (credentials.kind === 'u1') {
+    const caveats = parseMacaroonV1(credentials.root).caveats
+      .filter((caveat) => caveat.vid === undefined && caveat.location === undefined)
+    details.append(
+      el('p', { className: 'caveat-heading' }, 'First-party caveats:'),
+      el('ul', { className: 'caveat-list' }, caveats.map((caveat) => el('li', null, caveat.id))),
+    )
   }
   return details
 }
 
-function banner(message: string, tone: 'warning' | 'subtle'): HTMLElement {
-  const element = document.createElement('p')
-  element.className = `banner ${tone}`
-  element.setAttribute('role', 'status')
-  element.textContent = message
-  return element
+function accountContent(account: AccountInfo, credentials: Credentials, fetchedAt?: string): HTMLElement {
+  return el('div', { className: 'account-content' }, [
+    accountHeading(account, fetchedAt),
+    snapList(account),
+    tokenDetails(credentials),
+  ])
 }
 
-export function renderAccount(root: HTMLElement, creds: Credentials): void {
-  root.replaceChildren()
-  const header = document.createElement('header')
-  header.className = 'account-header'
-  const identity = document.createElement('div')
-  const wordmark = document.createElement('div')
-  wordmark.className = 'wordmark'
-  wordmark.textContent = 'snax'
-  const tagline = document.createElement('p')
-  tagline.textContent = 'A faster view of your snaps on the Snap Store. Runs entirely in your browser.'
-  identity.append(wordmark, tagline)
-  const logout = document.createElement('button')
-  logout.type = 'button'
-  logout.className = 'secondary'
-  logout.textContent = 'Log out'
-  logout.addEventListener('click', () => {
+function banner(message: string, tone: 'error' | 'quiet'): HTMLElement {
+  return el('p', {
+    className: `account-banner account-banner--${tone}`,
+    attrs: { role: 'status' },
+  }, message)
+}
+
+export function renderAccount(root: HTMLElement): () => void {
+  const credentialsText = loadCredentialsText()
+  let credentials: Credentials
+  try {
+    if (credentialsText === null) throw new Error('Missing credentials')
+    credentials = parseCredentials(credentialsText)
+  } catch {
     clearAll()
-    renderLogin(root)
+    navigate('#/')
+    return () => undefined
+  }
+
+  let active = true
+  const shell = createShell({
+    onLogout: () => {
+      clearAll()
+      navigate('#/')
+    },
   })
-  header.append(identity, logout)
-
-  const main = document.createElement('main')
-  const noticeArea = document.createElement('div')
-  const cards = document.createElement('div')
+  shell.main.classList.add('account-page')
+  const notices = el('div', { className: 'account-notices' })
+  const content = el('div')
   const cached = loadCachedAccount()
-  const renderCards = (account: AccountInfo, fetchedAt?: string): void => {
-    cards.replaceChildren(accountCard(account, fetchedAt), snapsCard(account), tokenDetails(creds))
-  }
-  if (cached !== null) {
-    renderCards(cached.account, cached.fetchedAt)
+  if (cached === null) {
+    content.append(
+      el('div', { className: 'account-heading' }, [el('h1', null, 'Your snaps')]),
+      el('p', { className: 'account-loading' }, 'Loading your Snap Store account.'),
+      tokenDetails(credentials),
+    )
   } else {
-    const loading = document.createElement('p')
-    loading.className = 'loading'
-    loading.textContent = 'Loading your Snap Store account…'
-    cards.append(loading, tokenDetails(creds))
+    content.replaceChildren(accountContent(cached.account, credentials, cached.fetchedAt))
   }
-  main.append(noticeArea, cards)
-  root.append(header, main)
+  shell.main.append(notices, content)
+  root.replaceChildren(shell.element)
 
-  void fetchAccount(creds).then((account) => {
+  void fetchAccount(credentials).then((account) => {
+    if (!active) return
     saveCachedAccount(account)
-    noticeArea.replaceChildren()
-    renderCards(account, new Date().toISOString())
+    const refreshed = loadCachedAccount()
+    notices.replaceChildren()
+    content.replaceChildren(accountContent(account, credentials, refreshed?.fetchedAt))
   }).catch((error: unknown) => {
+    if (!active) return
     if (error instanceof StoreError && error.status === 401) {
-      noticeArea.replaceChildren(banner('The Snap Store rejected the stored token. Log out and log in again.', 'warning'))
+      notices.replaceChildren(banner('The Snap Store rejected the stored token. Log out and log in again.', 'error'))
     } else if (error instanceof NetworkError) {
-      noticeArea.replaceChildren(banner('Offline? Showing cached data.', 'subtle'))
+      notices.replaceChildren(banner('Offline? Showing cached data.', 'quiet'))
     } else if (error instanceof StoreError) {
-      noticeArea.replaceChildren(banner(`The Snap Store returned status ${error.status}: ${error.message}`, 'subtle'))
+      notices.replaceChildren(banner(`The Snap Store answered with status ${error.status}: ${error.message}`, 'quiet'))
     } else {
-      noticeArea.replaceChildren(banner('Could not refresh the account. Showing cached data.', 'subtle'))
+      notices.replaceChildren(banner('Could not refresh the account. Showing cached data.', 'quiet'))
     }
   })
+
+  return () => { active = false }
 }
