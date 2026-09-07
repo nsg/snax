@@ -9,6 +9,10 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.2.8",
+    "@fontsource/ubuntu-mono": "^5.2.8"
+  },
   "devDependencies": {
     "typescript": "^5.9.2",
     "vite": "^7.1.4",
