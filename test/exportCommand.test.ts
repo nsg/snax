@@ -1,24 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildExportCommand, exportCommandLines } from '../src/exportCommand'
-import type { OnboardingState } from '../src/onboarding'
+import {
+  REQUIRED_ACLS,
+  buildExportCommand,
+  exportCommandLines,
+} from '../src/exportCommand'
+import type { ExportOptions } from '../src/exportCommand'
 
-const defaults: OnboardingState = {
+const defaults: ExportOptions = {
   expires: '2026-12-05',
-  acls: [
-    'package_access',
-    'package_metrics',
-    'package_release',
-    'package_update',
-    'package_manage',
-  ],
   snaps: '',
 }
 
 describe('buildExportCommand', () => {
   it('builds the default command', () => {
     expect(buildExportCommand(defaults)).toBe(
-      'snapcraft export-login --acls=package_access,package_metrics,package_release,package_update,package_manage --expires=2026-12-05 snax-login.txt',
+      'snapcraft export-login --acls=package_access,package_metrics,package_release --expires=2026-12-05 -',
     )
   })
 
@@ -30,17 +27,15 @@ describe('buildExportCommand', () => {
 
   it('trims snap names and drops empty entries', () => {
     expect(buildExportCommand({ ...defaults, snaps: ' first, ,second, ' })).toBe(
-      'snapcraft export-login --acls=package_access,package_metrics,package_release,package_update,package_manage --snaps=first,second --expires=2026-12-05 snax-login.txt',
+      'snapcraft export-login --acls=package_access,package_metrics,package_release --snaps=first,second --expires=2026-12-05 -',
     )
   })
 
-  it('forces package_access to the front', () => {
-    expect(
-      buildExportCommand({
-        ...defaults,
-        acls: ['package_metrics', 'package_access', 'package_manage'],
-      }),
-    ).toContain('--acls=package_access,package_metrics,package_manage')
+  it('uses the required ACLs verbatim and writes the token to stdout', () => {
+    const command = buildExportCommand(defaults)
+
+    expect(command).toContain(`--acls=${REQUIRED_ACLS.join(',')}`)
+    expect(command.split(/\s+/).at(-1)).toBe('-')
   })
 })
 
@@ -61,7 +56,6 @@ describe('exportCommandLines', () => {
       .map((part) => part.text)
 
     expect(highlighted).toEqual([
-      'package_access,package_metrics,package_release,package_update,package_manage',
       'snax',
       '2026-12-05',
     ])

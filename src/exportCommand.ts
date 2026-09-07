@@ -1,11 +1,20 @@
-import type { OnboardingState } from './onboarding'
-
 export interface CommandPart {
   text: string
   value?: boolean
 }
 
 export type CommandLine = CommandPart[]
+
+export const REQUIRED_ACLS: readonly string[] = [
+  'package_access',
+  'package_metrics',
+  'package_release',
+]
+
+export interface ExportOptions {
+  expires: string
+  snaps: string
+}
 
 function commaSeparated(value: string): string {
   return value
@@ -15,32 +24,20 @@ function commaSeparated(value: string): string {
     .join(',')
 }
 
-function normalizedAcls(acls: readonly string[]): string {
-  const entries = acls
-    .map((acl) => acl.trim())
-    .filter((acl) => acl.length > 0 && acl !== 'package_access')
-
-  return ['package_access', ...new Set(entries)].join(',')
-}
-
-export function buildExportCommand(onboarding: OnboardingState): string {
-  const acls = normalizedAcls(onboarding.acls)
-  const snaps = commaSeparated(onboarding.snaps)
+export function buildExportCommand(options: ExportOptions): string {
+  const acls = REQUIRED_ACLS.join(',')
+  const snaps = commaSeparated(options.snaps)
   const snapsOption = snaps.length > 0 ? ` --snaps=${snaps}` : ''
 
-  return `snapcraft export-login --acls=${acls}${snapsOption} --expires=${onboarding.expires.trim()} snax-login.txt`
+  return `snapcraft export-login --acls=${acls}${snapsOption} --expires=${options.expires.trim()} -`
 }
 
-export function exportCommandLines(onboarding: OnboardingState): CommandLine[] {
-  const acls = normalizedAcls(onboarding.acls)
-  const snaps = commaSeparated(onboarding.snaps)
+export function exportCommandLines(options: ExportOptions): CommandLine[] {
+  const acls = REQUIRED_ACLS.join(',')
+  const snaps = commaSeparated(options.snaps)
   const lines: CommandLine[] = [
     [{ text: 'snapcraft export-login \\' }],
-    [
-      { text: '    --acls=' },
-      { text: acls, value: true },
-      { text: ' \\' },
-    ],
+    [{ text: `    --acls=${acls} \\` }],
   ]
 
   if (snaps.length > 0) {
@@ -54,10 +51,10 @@ export function exportCommandLines(onboarding: OnboardingState): CommandLine[] {
   lines.push(
     [
       { text: '    --expires=' },
-      { text: onboarding.expires.trim(), value: true },
+      { text: options.expires.trim(), value: true },
       { text: ' \\' },
     ],
-    [{ text: '    snax-login.txt' }],
+    [{ text: '    -' }],
   )
 
   return lines

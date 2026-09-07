@@ -1,18 +1,9 @@
 export interface OnboardingState {
   expires: string
-  acls: string[]
   snaps: string
 }
 
 export const ONBOARDING_KEY = 'snax.onboarding'
-
-export const DEFAULT_ACLS = [
-  'package_access',
-  'package_metrics',
-  'package_release',
-  'package_update',
-  'package_manage',
-] as const
 
 function localDate(date: Date): string {
   const year = date.getFullYear()
@@ -27,21 +18,8 @@ export function defaultOnboarding(today = new Date()): OnboardingState {
 
   return {
     expires: localDate(expires),
-    acls: [...DEFAULT_ACLS],
     snaps: '',
   }
-}
-
-function isOnboardingState(value: unknown): value is OnboardingState {
-  if (typeof value !== 'object' || value === null) return false
-
-  const candidate = value as Partial<OnboardingState>
-  return (
-    typeof candidate.expires === 'string' &&
-    Array.isArray(candidate.acls) &&
-    candidate.acls.every((acl) => typeof acl === 'string') &&
-    typeof candidate.snaps === 'string'
-  )
 }
 
 export function loadOnboarding(): OnboardingState {
@@ -50,11 +28,14 @@ export function loadOnboarding(): OnboardingState {
 
   try {
     const parsed: unknown = JSON.parse(stored)
-    if (isOnboardingState(parsed)) {
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      const candidate = parsed as Record<string, unknown>
+      const defaults = defaultOnboarding()
+
       return {
-        expires: parsed.expires,
-        acls: [...parsed.acls],
-        snaps: parsed.snaps,
+        expires:
+          typeof candidate.expires === 'string' ? candidate.expires : defaults.expires,
+        snaps: typeof candidate.snaps === 'string' ? candidate.snaps : defaults.snaps,
       }
     }
   } catch {
