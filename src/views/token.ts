@@ -12,7 +12,7 @@ export function renderToken(root: HTMLElement): () => void {
   let checking = false
 
   const textarea = el('textarea', {
-    className: 'token-textarea', rows: 8, placeholder: 'contents of snax-login.txt', spellcheck: false,
+    className: 'token-textarea', rows: 8, placeholder: 'the long line from your terminal', spellcheck: false,
     autocomplete: 'off', attrs: { 'aria-label': 'Login token' },
   })
   const status = el('p', { className: 'token-status', attrs: { role: 'status' } })
@@ -77,7 +77,7 @@ export function renderToken(root: HTMLElement): () => void {
     el('section', { className: 'flow-page flow-page--narrow' }, [
       el('div', { className: 'page-heading' }, [
         el('h1', null, 'Paste the token'),
-        el('p', { className: 'page-lede' }, 'Paste everything that cat printed. It is one long line.'),
+        el('p', { className: 'page-lede' }, 'Paste the long line that snapcraft printed. Pasting the whole output is fine too.'),
       ]),
       textarea, status, privacy, nav.element,
     ]),

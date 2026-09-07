@@ -5,16 +5,6 @@ import { createBottomNav, createShell } from '../ui/shell'
 import { createSteps } from '../ui/steps'
 import { createCopyButton, createTerminal } from '../ui/terminal'
 
-const permissions = [
-  ['package_access', 'See your snaps and revisions'],
-  ['package_metrics', 'Read install metrics'],
-  ['package_release', 'Release revisions to channels'],
-  ['package_update', 'Edit snap listings'],
-  ['package_manage', 'Manage collaborators'],
-  ['package_push', 'Upload new revisions'],
-  ['package_register', 'Register new snap names'],
-] as const
-
 function localDateAfter(days: number): string {
   const date = new Date()
   date.setDate(date.getDate() + days)
@@ -24,11 +14,18 @@ function localDateAfter(days: number): string {
   return `${year}-${month}-${day}`
 }
 
+function describe(state: OnboardingState): string {
+  const snaps = state.snaps.trim() === '' ? 'all snaps' : `only ${state.snaps.trim()}`
+  return `expires ${state.expires}, ${snaps}`
+}
+
 export function renderSetup(root: HTMLElement): () => void {
   const shell = createShell()
   const state: OnboardingState = loadOnboarding()
-  const form = el('form', { className: 'setup-options' })
-  form.addEventListener('submit', (event) => event.preventDefault())
+
+  const terminal = createTerminal([
+    { lines: exportCommandLines(state), copyText: buildExportCommand(state), copyLabel: 'Copy export command' },
+  ])
 
   const expires = el('input', {
     type: 'date', value: state.expires, min: localDateAfter(0), max: localDateAfter(365), required: true,
@@ -39,40 +36,31 @@ export function renderSetup(root: HTMLElement): () => void {
     el('small', { className: 'field__hint' }, 'Up to one year.'),
   ])
 
-  const fieldset = el('fieldset', { className: 'permission-group' }, [el('legend', null, 'Permissions')])
-  const permissionInputs: HTMLInputElement[] = []
-  for (const [acl, label] of permissions) {
-    const required = acl === 'package_access'
-    const checkbox = el('input', {
-      type: 'checkbox', value: acl, checked: required || state.acls.includes(acl), disabled: required,
-    })
-    permissionInputs.push(checkbox)
-    fieldset.append(el('label', { className: 'permission-row' }, [
-      checkbox,
-      el('span', { className: 'permission-row__copy' }, [
-        el('span', { className: 'permission-row__label' }, label),
-        el('code', { className: 'permission-row__id' }, acl),
-        required ? el('small', { className: 'permission-row__hint' }, 'always on') : null,
-      ]),
-    ]))
-  }
-
   const snaps = el('input', { type: 'text', value: state.snaps, placeholder: 'all snaps' })
   const snapsField = el('label', { className: 'field' }, [
     el('span', { className: 'field__label' }, 'Only these snaps'),
     snaps,
     el('small', { className: 'field__hint' }, 'Comma-separated snap names, optional.'),
   ])
-  form.append(expiryField, fieldset, snapsField)
 
-  const terminal = createTerminal([
-    { lines: exportCommandLines(state), copyText: buildExportCommand(state), copyLabel: 'Copy export command' },
-    { lines: [[{ text: 'cat snax-login.txt' }]], copyText: 'cat snax-login.txt', copyLabel: 'Copy cat command' },
+  const summaryDetail = el('span', { className: 'advanced__detail' }, describe(state))
+  const advanced = el('details', { className: 'advanced' }, [
+    el('summary', null, [el('span', null, 'Advanced'), summaryDetail]),
+    el('form', { className: 'advanced__fields', on: { submit: (event) => event.preventDefault() } }, [
+      expiryField,
+      snapsField,
+    ]),
   ])
-  const terminalColumn = el('div', { className: 'setup-terminal' }, [
-    terminal.element,
-    el('p', { className: 'quiet-note' }, 'snapcraft asks for your Ubuntu One email, password and second factor, then writes the token to snax-login.txt.'),
-  ])
+
+  const update = (): void => {
+    state.expires = expires.value
+    state.snaps = snaps.value
+    saveOnboarding(state)
+    terminal.updateCommand(0, exportCommandLines(state), buildExportCommand(state))
+    summaryDetail.textContent = describe(state)
+  }
+  expires.addEventListener('input', update)
+  snaps.addEventListener('input', update)
 
   const installCode = el('code', null, 'sudo snap install snapcraft --classic')
   const installCopy = createCopyButton({
@@ -80,28 +68,20 @@ export function renderSetup(root: HTMLElement): () => void {
     ariaLabel: 'Copy snapcraft install command', className: 'inline-copy',
   })
   const installAside = el('aside', { className: 'install-aside' }, [
-    "Don't have snapcraft? ", installCode, installCopy.button,
+    el('span', null, ["Don't have snapcraft? ", installCode, installCopy.button]),
+    el('span', null, 'Printing the token needs snapcraft 7.5 or newer.'),
   ])
-
-  const update = (): void => {
-    state.expires = expires.value
-    state.acls = permissionInputs.filter((input) => input.checked || input.disabled).map((input) => input.value)
-    state.snaps = snaps.value
-    saveOnboarding(state)
-    terminal.updateCommand(0, exportCommandLines(state), buildExportCommand(state))
-  }
-  expires.addEventListener('input', update)
-  snaps.addEventListener('input', update)
-  for (const input of permissionInputs) input.addEventListener('change', update)
 
   shell.main.append(
     createSteps(1),
-    el('section', { className: 'flow-page' }, [
+    el('section', { className: 'flow-page flow-page--setup' }, [
       el('div', { className: 'page-heading' }, [
         el('h1', null, 'Make a token'),
-        el('p', { className: 'page-lede' }, 'snapcraft mints a token that does only what you allow and expires when you choose.'),
+        el('p', { className: 'page-lede' }, 'Run this in a terminal. snapcraft signs you in with Ubuntu One and prints a token that can see your snaps, read their metrics and release revisions.'),
       ]),
-      el('div', { className: 'setup-grid' }, [form, terminalColumn]),
+      terminal.element,
+      el('p', { className: 'quiet-note' }, 'Copy the long line at the end of the output. Nothing is written to disk, so there is no file to clean up afterwards.'),
+      advanced,
       installAside,
       createBottomNav({ backHref: '#/', primaryLabel: 'Next, paste the token', primaryHref: '#/token' }).element,
     ]),

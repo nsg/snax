@@ -110,17 +110,19 @@ function valueTexts(lines: readonly CommandLine[]): Map<string, string> {
   return values
 }
 
-function valueNode(value: string): HTMLElement {
-  // Break long comma-separated values only after commas, never mid-word.
-  const span = el('span', { className: 'terminal-value' })
+function appendChunks(target: HTMLElement, value: string): void {
+  // Each chunk refuses to wrap internally; wrapping is only allowed after a comma.
   const pieces = value.split(',')
   pieces.forEach((piece, index) => {
-    if (index > 0) {
-      span.append(text(','))
-      span.append(el('wbr'))
-    }
-    span.append(text(piece))
+    const last = index === pieces.length - 1
+    target.append(el('span', { className: 'terminal-chunk' }, last ? piece : `${piece},`))
+    if (!last) target.append(el('wbr'))
   })
+}
+
+function valueNode(value: string): HTMLElement {
+  const span = el('span', { className: 'terminal-value' })
+  appendChunks(span, value)
   return span
 }
 
@@ -135,7 +137,7 @@ function renderCommand(code: HTMLElement, lines: readonly CommandLine[], previou
 
     line.forEach((part, partIndex) => {
       if (part.value !== true) {
-        lineElement.append(text(part.text))
+        appendChunks(lineElement, part.text)
         return
       }
 
