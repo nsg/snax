@@ -36,6 +36,30 @@ describe('parseCredentials', () => {
     )
   })
 
+  it('parses a token following the export-login stdout label', () => {
+    expectFixtureCredentials(
+      `Exported login credentials:\n${vectors.exported_login_file}\n`,
+    )
+  })
+
+  it('parses a token following terminal noise', () => {
+    expectFixtureCredentials(
+      `Login successful.\nStarting Snapcraft 8.3.1\nExported login credentials:\n${vectors.exported_login_file}\n`,
+    )
+  })
+
+  it('parses a token before a trailing shell prompt', () => {
+    expectFixtureCredentials(
+      `Exported login credentials:\n${vectors.exported_login_file}\nuser@host:~$ `,
+    )
+  })
+
+  it('rejects garbage-only multi-line terminal output', () => {
+    expect(() =>
+      parseCredentials('Login successful.\nStarting Snapcraft 8.3.1\nnot-a-token'),
+    ).toThrow(CredentialsParseError)
+  })
+
   it('parses the legacy unwrapped JSON export', () => {
     expectFixtureCredentials(vectors.exported_login_file_legacy_json)
   })

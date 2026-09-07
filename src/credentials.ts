@@ -111,7 +111,7 @@ function parseJson(text: string): Credentials {
   throw new CredentialsParseError('The login token has an unsupported credentials format.')
 }
 
-export function parseCredentials(text: string): Credentials {
+function parseCredentialsPayload(text: string): Credentials {
   const trimmed = text.trim()
   if (trimmed.startsWith('[login.ubuntu.com]')) {
     return parseIni(trimmed)
@@ -125,6 +125,38 @@ export function parseCredentials(text: string): Credentials {
     throw new CredentialsParseError('The pasted login token was not recognised.')
   }
   return parseJson(decoded)
+}
+
+export function parseCredentials(text: string): Credentials {
+  const trimmed = text.trim()
+  let originalError: CredentialsParseError
+
+  try {
+    return parseCredentialsPayload(trimmed)
+  } catch (error) {
+    if (!(error instanceof CredentialsParseError)) throw error
+    originalError = error
+  }
+
+  const candidates = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line.length > 0 &&
+        !/^Exported login credentials:?$/i.test(line) &&
+        !/\s/.test(line),
+    )
+
+  for (const candidate of candidates.reverse()) {
+    try {
+      return parseCredentialsPayload(candidate)
+    } catch (error) {
+      if (!(error instanceof CredentialsParseError)) throw error
+    }
+  }
+
+  throw originalError
 }
 
 export async function authorizationHeader(creds: Credentials): Promise<string> {
